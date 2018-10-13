@@ -1,5 +1,5 @@
-#ifndef _WF_H_
-#define _WF_H_
+#ifndef _FIFO_H_
+#define _FIFO_H_
 
 #define CONFIG_WF_FIFO_SIZE    (10)
 #define ARR_CNT(x)    (sizeof(x) / sizeof(x[0]))  /* array count */

@@ -1,4 +1,4 @@
-#include "wf.h"
+#include "fifo.h"
 #include <string.h>
 #include <stdio.h>
 
