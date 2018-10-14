@@ -1,5 +1,5 @@
 all:
-	@gcc -o test wf.c -g
+	@gcc -o fifo -g fifo.c -gdwarf-2 -gstrict-dwarf
 
 clean:
-	@rm -f test
+	@rm -f fifo
