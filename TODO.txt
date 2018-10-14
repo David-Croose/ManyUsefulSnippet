@@ -1,0 +1,15 @@
+* should add a boot that contains 2 routine, one for PC, another for embeded device. and the boot is not just supporting some normal
+  features, such as upgrading firware, booting system. it can even upgrade itself, backup itself, app, or any specified memory area.
+  
+* should add a universal(not NAND-FLASH) FLASH-driver, it can read, write, erase any FLASH memory chip, and provides many
+  configurations for user.
+
+* should add an arg enter routine.
+
+* should add FFT, IIR filters(and many others like that).
+
+* should add software simulation SPI, IIC.
+
+* should add a NAND-FLASH FTL.
+
+* should add a malloc implementation.
