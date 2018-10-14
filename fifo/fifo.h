@@ -1,21 +1,41 @@
+/*****************************************************************************************
+
+                              a simple fifo implementation.
+
+*****************************************************************************************/
+
 #ifndef _FIFO_H_
 #define _FIFO_H_
 
-#define CONFIG_WF_FIFO_SIZE    (10)
-#define ARR_CNT(x)    (sizeof(x) / sizeof(x[0]))  /* array count */
+#define ARR_CNT(x)    				(sizeof(x) / sizeof(x[0]))  /* array count */
+#define F_TRUE    	(1)
+#define F_FALSE		(!F_TRUE)
 
-typedef short wf_t;
+typedef short fdat_t;	/* you can configure the fdat_t to your need */
 typedef enum {
-	WF_OK = 0,
-	WF_ERR_PA,		// parameter error
-	WF_ERR_NM,		// no memory
-} wf_res_t;
+	F_OK = 0,
+	F_ERR_PA,		// parameter error
+	F_ERR_NM,		// no memory
+	F_ERR_BS,		// busy
+} fres_t;			// fifo result
 
 struct NODE {
-	wf_t fifo[CONFIG_WF_FIFO_SIZE];
+	fdat_t *fifo;
 	unsigned int head;
 	unsigned int end;
+	unsigned int fifo_deep;		/* this is fifo units total, not fifo size! */
+	unsigned int lock_flag;
 };
+
+fres_t fifo_in(struct NODE *node, fdat_t *unit);
+fres_t fifo_inl(struct NODE *node, fdat_t *unit);
+fres_t fifo_out(struct NODE *node, fdat_t *unit);
+fres_t fifo_read(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *rc);
+fres_t fifo_write(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc);
+fres_t fifo_writel(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc);
+fres_t fifo_init(struct NODE *node, fdat_t *fifo, unsigned int fifocnt);
+fres_t fifo_deep(struct NODE *node, unsigned int *deep);
+fres_t fifo_deeptotal(struct NODE *node, unsigned int *deeptotal);
 
 #endif
 

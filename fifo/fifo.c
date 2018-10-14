@@ -1,190 +1,487 @@
+/*****************************************************************************************
+
+                              a simple fifo implementation.
+
+*****************************************************************************************/
+
 #include "fifo.h"
 #include <string.h>
 #include <stdio.h>
 
-/**
- * write data into fifo.
- * @param node: the node to operate.
- * @param data: the write data.
- */
-void fifo_in(struct NODE *node, wf_t data)
-{
-	node->fifo[node->head] = data;
+#define FIFO_LOCK(node)				do{node->lock_flag = F_TRUE; }while(0)
+#define FIFO_UNLOCK(node)			do{node->lock_flag = F_FALSE;}while(0)
+#define FIFO_ISLOCK(node)			(node->lock_flag)
+#define HEADNODE_MOVE2NEXT(node)	do{if(++node->head >= (node->fifo_deep + 1)){node->head = 0;}}while(0)
+#define ENDNODE_MOVE2NEXT(node)		do{if(++node->end >= (node->fifo_deep + 1)){node->end = 0;}}while(0)
 
-	if(++node->head >= ARR_CNT(node->fifo))
+/**
+ * if the end node is behind the head node, the fifo is considerd to be
+ * full. this is not equal to the case that head == end. the former is
+ * for write, the latter is for read.
+ * @param node: the node to be operated.
+ * @return: F_TRUE --- full.
+ *          F_FALSE --- not full.
+ */
+static int is_fifofull(struct NODE *node)
+{
+	unsigned int _head = node->head;
+
+	if(++_head >= (node->fifo_deep + 1))
 	{
-		node->head = 0;
+		_head = 0;
 	}
-	if(node->head == node->end)
+	if(_head == node->end)
 	{
-		if(++node->end >= ARR_CNT(node->fifo))
+		return F_TRUE;
+	}
+	return F_FALSE;
+}
+
+/**
+ * write one unit into fifo. ignoring the fifo is full or not.
+ * @param node: the node to be operated.
+ * @param unit: the unit to be written into the fifo.
+ * @return: the result of this function.
+ */
+fres_t fifo_in(struct NODE *node, fdat_t *unit)
+{
+	if(!node || !unit)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		memcpy(&node->fifo[node->head], unit, sizeof(*unit));
+
+		HEADNODE_MOVE2NEXT(node);
+		if(node->head == node->end)
 		{
-			node->end = 0;
+			ENDNODE_MOVE2NEXT(node);
 		}
 	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
 }
 
 /**
- * read out data from fifo.
- * @param node: the node to operate.
- * @param out: the memory to store the read out data.
- * @return: the result of the read operation.
+ * write one unit into fifo with a limitation: failed if fifo is full.
+ * @param node: the node to be operated.
+ * @param unit: the unit to be written into the fifo.
+ * @return: the result of this function.
  */
-wf_res_t fifo_out(struct NODE *node, wf_t *out)
+fres_t fifo_inl(struct NODE *node, fdat_t *unit)
 {
-	if(node->head == node->end)
+	if(!node || !unit)
 	{
-		return WF_ERR_NM;
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
 	}
 
-	*out = node->fifo[node->end];
-	if(++node->end >= ARR_CNT(node->fifo))
+	FIFO_LOCK(node);
 	{
-		node->end = 0;
+		if(is_fifofull(node) == F_TRUE)
+		{
+			FIFO_UNLOCK(node);
+			return F_ERR_NM;
+		}
+
+		memcpy(&node->fifo[node->head], unit, sizeof(*unit));
+		HEADNODE_MOVE2NEXT(node);
 	}
-	return WF_OK;
+	FIFO_UNLOCK(node);
+
+	return F_OK;
 }
 
 /**
- * just read fifo, don't drain it.
- * @param node: the node to operate.
- * @param read: the memory to store the read out data.
+ * read out one data from fifo.
+ * @param node: the node to be operated.
+ * @param unit: the memory store the read out data.
+ * @return: the result of this function.
+ */
+fres_t fifo_out(struct NODE *node, fdat_t *unit)
+{
+	if(!node || !unit)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		if(node->head == node->end)
+		{
+			FIFO_UNLOCK(node);
+			return F_ERR_NM;
+		}
+		memcpy(unit, &node->fifo[node->end], sizeof(*unit));
+		ENDNODE_MOVE2NEXT(node);
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
+ * read numbers of units from fifo.
+ * @param node: the node to be operated.
+ * @param units: the memory store the read out data.
  * @param cnt: how many units to read.
- * @return: the result of the read operation.
+ * @param rc: it is "read count", means the real number of read out units.
+ * @return: the result of this function.
  */
-wf_res_t fifo_read(struct NODE *node, wf_t *read, int cnt)
+fres_t fifo_read(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *rc)
 {
-	unsigned int _end = node->end;
 	int i = 0;
 
-	if(!node || !read || cnt <= 0)
+	if(!node || !units || !cnt || !rc)
 	{
-		return WF_ERR_PA;
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
 	}
 
-	if(node->head == node->end)
+	FIFO_LOCK(node);
 	{
-		return WF_ERR_NM;
-	}
-
-	while(_end != node->head)
-	{
-		read[i] = node->fifo[_end];
-		if(++i >= cnt)
+		while(node->end != node->head)
 		{
-			break;
+			memcpy(&units[i], &node->fifo[node->end], sizeof(*units));
+			ENDNODE_MOVE2NEXT(node);
+			if(++i >= cnt)
+			{
+				break;
+			}
 		}
-		if(++_end >= ARR_CNT(node->fifo))
-		{
-			_end = 0;
-		}
+		*rc = i;
 	}
+	FIFO_UNLOCK(node);
 
-	return WF_OK;
+	return F_OK;
 }
 
 /**
- * reset a fifo.
- * @param node: the node to operate.
+ * write numbers of units into fifo, ignoring the fifo is full or not.
+ * @param node: the node to be operated.
+ * @param units: the memory store the write data.
+ * @param cnt: how many units to write.
+ * @param wc: it is "write count", means the real number of write units.
+ *			  it always equals to cnt.
+ * @return: the result of this function.
  */
-void fifo_reset(struct NODE *node)
+fres_t fifo_write(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc)
 {
-	memset(node, 0, sizeof(*node));
+	int i;
+
+	if(!node || !units || !cnt || !wc)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		for(i = 0; i < cnt; i++)
+		{
+			memcpy(&node->fifo[node->head], &units[i], sizeof(*units));
+
+			HEADNODE_MOVE2NEXT(node);
+			if(node->head == node->end)
+			{
+				ENDNODE_MOVE2NEXT(node);
+			}
+		}
+		*wc = cnt;
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
 }
 
 /**
- * get fifo capacity.
- * @param node: the node to operate.
- * @return: how many units the fifo contains.
+ * write many units into fifo with a limitation: failed if fifo full.
+ * @param node: the node to be operated.
+ * @param units: the memory store the write data.
+ * @param cnt: how many units to write.
+ * @param wc: it is "write count", means the real number of write units.
+ * @return: the result of this function.
  */
-int fifo_cap(struct NODE *node)
+fres_t fifo_writel(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc)
 {
-	unsigned int cap = 0;
-	unsigned int _end = node->end;
+	unsigned int i;
 
-	while(_end != node->head)
+	if(!node || !units || !cnt || !wc)
 	{
-		cap++;
-		if(++_end >= ARR_CNT(node->fifo))
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		for(i = 0; i < cnt; i++)
 		{
-			_end = 0;
+			if(is_fifofull(node) == F_TRUE)
+			{
+				*wc = i;
+				FIFO_UNLOCK(node);
+				return F_OK;
+			}
+
+			memcpy(&node->fifo[node->head], &units[i], sizeof(*units));
+			HEADNODE_MOVE2NEXT(node);
 		}
 	}
-	return cap;
+	FIFO_UNLOCK(node);
+
+	return F_OK;
 }
 
 /**
- * get the max units of the fifo.
- * @param node: the node to operate.
- * @return: the max units of the fifo.
+ * initialize a fifo.
+ * @param node: the node to be operated.
+ * @param fifo: the user data to be bonded to the node. in general,
+ *              it is an array.
+ * @param fifocnt: fifo count. the total elements of of @fifo.
+ * @return: the result of this function.
+ * @note: the fifo size would be @fifocnt - 1!
  */
-int fifo_cnt(struct NODE *node)
+fres_t fifo_init(struct NODE *node, fdat_t *fifo, unsigned int fifocnt)
 {
-	return ARR_CNT(node->fifo);
+	if(!node || !fifo || !fifocnt)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		memset(node, 0, sizeof(*node));
+		memset(fifo, 0, fifocnt * sizeof(*fifo));
+		node->fifo = fifo;
+		node->fifo_deep = fifocnt - 1;
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
+ * get fifo deep, means how many units had been written into this fifo.
+ * @param node: the node to be operated.
+ * @param deep: the variable to store the fifo deep.
+ * @return: the result of this function.
+ */
+fres_t fifo_deep(struct NODE *node, unsigned int *deep)
+{
+	unsigned int _deep = 0;
+	unsigned int _end;
+
+	if(!node || !deep)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		_end = node->end;
+		while(_end != node->head)
+		{
+			_deep++;
+			if(++_end >= (node->fifo_deep + 1))
+			{
+				_end = 0;
+			}
+		}
+		*deep = _deep;
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
+ * get the max units of this fifo.
+ * @param node: the node to be operated.
+ * @param deeptotal: the variable to store the total deep of this fifo.
+ * @return: the result of this function.
+ */
+fres_t fifo_deeptotal(struct NODE *node, unsigned int *deeptotal)
+{
+	if(!node || !deeptotal)
+	{
+		return F_ERR_PA;
+	}
+
+	*deeptotal = node->fifo_deep;
+	return F_OK;
 }
 
 int main(void)
 {
+#define ERR_HANDLE(x) \
+	if(x != F_OK) {printf("[ERROR]:@%s@%d,res=%d\n", __FUNCTION__, __LINE__, x); return -1;}
+
+#define MY_FIFOCNT	10    /* 9 deep in fact */
+
+	fdat_t data[MY_FIFOCNT];
 	struct NODE node;
-	wf_t arr[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
-	wf_t buf[ARR_CNT(node.fifo)] = {0};
-	int i, j, cap;
-	wf_t out;
+	fres_t res;
+	unsigned int deeptotal, deep;
 
-	fifo_reset(&node);
-	printf("fifo cnt=%d\n", fifo_cnt(&node));
+	res = fifo_init(&node, data, MY_FIFOCNT);
+	ERR_HANDLE(res);
 
-	for(i = 0; i < ARR_CNT(arr); i++)
+	res = fifo_deeptotal(&node, &deeptotal);
+	ERR_HANDLE(res);
+	printf("fifo_deeptotal=%d\n", deeptotal);
+
+	res = fifo_deep(&node, &deep);
+	ERR_HANDLE(res);
+	printf("fifo_deep=%d\n", deep);
+
+	// write fifo with data one by one
 	{
-		printf("write in:%d, ", arr[i]);
-		fifo_in(&node, arr[i]);
-		cap = fifo_cap(&node);
-		printf("fifo cap=%d, ", cap);
+		fdat_t testdata[MY_FIFOCNT] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+		int i;
 
-		if(fifo_read(&node, buf, cap) == WF_OK)
+		printf("fifo in  ...\n");
+		printf("write=");
+		for(i = 0; i < deeptotal; i++)
 		{
-			for(j = 0; j < cap; j++)
-			{
-				printf("%d ", buf[j]);
-			}
+			res = fifo_in(&node, &testdata[i]);
+			ERR_HANDLE(res);
+			printf("%d ", testdata[i]);
 		}
 		printf("\n");
 	}
-	printf("\n");
 
-	cap = fifo_cap(&node);
-	printf("read out:\n");
-	for(i = 0; i < cap; i++)
+	// read fifo with one by one
 	{
-		if(fifo_out(&node, &out) == WF_OK)
-		{
-			printf("%d\n", out);
-		}
-		printf("fifo cap=%d\n", fifo_cap(&node));
-	}
-	printf("\n\n");
+		fdat_t buf[MY_FIFOCNT] = {0};
+		fdat_t read;
+		int i;
 
-	cap = fifo_cap(&node);
-	printf("fifo cap=%d\n", cap);
-	printf("read out:\n");
-	for(i = 0; i < ARR_CNT(arr); i++)
-	{
-		if(fifo_out(&node, &out) == WF_OK)
+		printf("fifo out ...\n");
+		res = fifo_deep(&node, &deep);
+		ERR_HANDLE(res);
+		printf("fifo_deep=%d\n", deep);
+		printf("read=");
+		for(i = 0; i < deep; i++)
 		{
-			printf("%d ", out);
+			res = fifo_out(&node, &read);
+			ERR_HANDLE(res);
+			printf("%d ", read);
 		}
+		printf("\n");
 	}
-	printf("\n");
 
-	printf("read:\n");
-	if(fifo_read(&node, buf, ARR_CNT(buf)) == WF_OK)
+	// write fifo with many units
 	{
-		for(j = 0; j < ARR_CNT(buf); j++)
+		fdat_t testdata[] = {11, 22, 33, 44, 55, 66, 77, 88, 99, 111, 222, 333, 444, 555};
+		unsigned int wc, i;
+
+		printf("write fifo ...\n");
+		res = fifo_deep(&node, &deep);
+		ERR_HANDLE(res);
+		printf("fifo_deep=%d\n", deep);
+		printf("write=");
+		for(i = 0; i < ARR_CNT(testdata); i++)
 		{
-			printf("%d ", buf[j]);
+			printf("%d ", testdata[i]);
 		}
+		printf("\n");
+		res = fifo_write(&node, testdata, ARR_CNT(testdata), &wc);
+		ERR_HANDLE(res);
+		printf("wc=%d\n", wc);
 	}
-	printf("\n");
+
+	// read fifo with many units
+	{
+		fdat_t buf[20] = {0};
+		fdat_t read;
+		unsigned int rc, i;
+
+		printf("read fifo ...\n");
+		res = fifo_deep(&node, &deep);
+		ERR_HANDLE(res);
+		printf("fifo_deep=%d\n", deep);
+		res = fifo_read(&node, buf, deep, &rc);
+		ERR_HANDLE(res);
+		printf("read=");
+		for(i = 0; i < rc; i++)
+		{
+			printf("%d ", buf[i]);
+		}
+		printf("\n");
+		printf("rc=%d\n", rc);
+	}
+
+	// writel fifo with many units
+	{
+		fdat_t testdata[] = {99, 88, 77, 66, 55, 44, 33, 22, 11, 111, 222, 333, 444, 555};
+		unsigned int wc, i;
+
+		printf("writel fifo ...\n");
+		res = fifo_deep(&node, &deep);
+		ERR_HANDLE(res);
+		printf("fifo_deep=%d\n", deep);
+		printf("writel=");
+		for(i = 0; i < ARR_CNT(testdata); i++)
+		{
+			printf("%d ", testdata[i]);
+		}
+		printf("\n");
+		res = fifo_writel(&node, testdata, ARR_CNT(testdata), &wc);
+		ERR_HANDLE(res);
+		printf("wc=%d\n", wc);
+	}
+
+	// read fifo with many units
+	{
+		fdat_t buf[20] = {0};
+		fdat_t read;
+		unsigned int rc, i;
+
+		printf("read fifo ...\n");
+		res = fifo_deep(&node, &deep);
+		ERR_HANDLE(res);
+		printf("fifo_deep=%d\n", deep);
+		res = fifo_read(&node, buf, deep, &rc);
+		ERR_HANDLE(res);
+		printf("read=");
+		for(i = 0; i < rc; i++)
+		{
+			printf("%d ", buf[i]);
+		}
+		printf("\n");
+		printf("rc=%d\n", rc);
+	}
 
 	return 0;
 }
