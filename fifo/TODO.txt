@@ -1,0 +1,1 @@
+It is needed that adding support for multiple-fifo support, because in many case, fifo writing is very fast, but fifo reading is very slow.
