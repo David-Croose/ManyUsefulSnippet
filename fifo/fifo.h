@@ -32,6 +32,8 @@ fres_t fifo_inl(struct NODE *node, fdat_t *unit);
 fres_t fifo_out(struct NODE *node, fdat_t *unit);
 fres_t fifo_read(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *rc);
 fres_t fifo_peep(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *rc);
+fres_t fifo_od(struct NODE *node, fdat_t *unit);
+fres_t fifo_nd(struct NODE *node, fdat_t *unit);
 fres_t fifo_write(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc);
 fres_t fifo_writel(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *wc);
 fres_t fifo_init(struct NODE *node, fdat_t *fifo, unsigned int fifocnt);

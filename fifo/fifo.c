@@ -217,6 +217,80 @@ fres_t fifo_peep(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned in
 }
 
 /**
+ * get the odest data from the fifo, and the fifo won't outflow.
+ * @param node: the node to be operated.
+ * @param unit: the memory store the read out data.
+ * @return: the result of this function.
+ */
+fres_t fifo_od(struct NODE *node, fdat_t *unit)
+{
+	if(!node || !unit)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		if(node->head == node->end)
+		{
+			FIFO_UNLOCK(node);
+			return F_ERR_NM;
+		}
+		memcpy(unit, &node->fifo[node->end], sizeof(*unit));
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
+ * get the newest data from the fifo, and the fifo won't outflow.
+ * @param node: the node to be operated.
+ * @param unit: the memory store the read out data.
+ * @return: the result of this function.
+ */
+fres_t fifo_nd(struct NODE *node, fdat_t *unit)
+{
+	unsigned int _head;
+
+	if(!node || !unit)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+		if(node->head == node->end)
+		{
+			FIFO_UNLOCK(node);
+			return F_ERR_NM;
+		}
+
+		// get the position of the newest data
+		if(node->head == 0)
+		{
+			_head = node->fifo_deep;
+		}
+		else
+		{
+			_head = node->head - 1;
+		}
+		memcpy(unit, &node->fifo[_head], sizeof(*unit));
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
  * write numbers of units into fifo, ignoring the fifo is full or not.
  * @param node: the node to be operated.
  * @param units: the memory store the write data.
