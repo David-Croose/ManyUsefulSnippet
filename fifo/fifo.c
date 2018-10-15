@@ -174,6 +174,49 @@ fres_t fifo_read(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned in
 }
 
 /**
+ * peep numbers of units from fifo, and the fifo won't outflow.
+ * @param node: the node to be operated.
+ * @param units: the memory store the read out data.
+ * @param cnt: how many units to read.
+ * @param rc: it is "read count", means the real number of read out units.
+ * @return: the result of this function.
+ */
+fres_t fifo_peep(struct NODE *node, fdat_t *units, unsigned int cnt, unsigned int *rc)
+{
+	unsigned int _end, i = 0;
+
+	if(!node || !units || !cnt || !rc)
+	{
+		return F_ERR_PA;
+	}
+	if(FIFO_ISLOCK(node) == F_TRUE)
+	{
+		return F_ERR_BS;
+	}
+
+	FIFO_LOCK(node);
+	{
+	    _end = node->end;
+		while(_end != node->head)
+		{
+			memcpy(&units[i], &node->fifo[_end], sizeof(*units));
+			if(++_end >= (node->fifo_deep + 1))
+            {
+                _end = 0;
+            }
+			if(++i >= cnt)
+			{
+				break;
+			}
+		}
+		*rc = i;
+	}
+	FIFO_UNLOCK(node);
+
+	return F_OK;
+}
+
+/**
  * write numbers of units into fifo, ignoring the fifo is full or not.
  * @param node: the node to be operated.
  * @param units: the memory store the write data.
