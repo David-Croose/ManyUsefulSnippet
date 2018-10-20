@@ -8,14 +8,16 @@
 #include <string.h>
 #include <stdio.h>
 
-#define FIFO_LOCK(node)				do { node->lock_flag = F_TRUE;  } while(0)
-#define FIFO_UNLOCK(node)			do { node->lock_flag = F_FALSE; } while(0)
-#define FIFO_ISLOCK(node)			(node->lock_flag)
-#define HEADNODE_MOVE2NEXT(node)	do { if(++node->head >= (node->fifo_deep + 1)){node->head = 0;} } while(0)
-#define ENDNODE_MOVE2NEXT(node)		do { if(++node->end >= (node->fifo_deep + 1)){node->end = 0;} } while(0)
+#define FIFO_LOCK(node)                       do { (node)->lock_flag = F_TRUE;  } while(0)
+#define FIFO_UNLOCK(node)                     do { (node)->lock_flag = F_FALSE; } while(0)
+#define FIFO_ISLOCK(node)                     ((node)->lock_flag)
+#define HEADNODE_MOVE2NEXT(node)              do { if(++(node)->head >= ((node)->fifo_deep + 1)){(node)->head = 0;} } while(0)
+#define ENDNODE_MOVE2NEXT(node)               do { if(++(node)->end >= ((node)->fifo_deep + 1)){(node)->end = 0;} } while(0)
 // write one unit to fifo
-#define WRITEONEUNIT2FIFO(node, unit)	do { memcpy((node->fifo) + (node->head) * (node->usz), unit, node->usz); } while(0)
-#define UNITMOVE2NEXT(node, unit)		do { unit += node->usz; } while(0)
+#define WRITEONEUNIT_INTOFIFO(node, unit)     do { memcpy(((unsigned char *)((node)->fifo) + ((node)->head) * ((node)->usz)), (unit), (node)->usz); } while(0)
+#define READONEUNIT_FROMFIFO(node, unit)      do { memcpy((unit), ((unsigned char *)((node)->fifo) + ((node)->end) * ((node)->usz)), (node)->usz); } while(0)
+#define READANYUNIT_FROMFIFO(node, unit, seq) do { memcpy((unit), ((unsigned char *)((node)->fifo) + (seq) * ((node)->usz)), (node)->usz); } while(0)
+#define UNIT_MOVE2NEXT(node, unit)            do { (unit) = (unsigned char *)(unit) + (node)->usz; } while(0)
 
 /**
  * if the end node is behind the head node, the fifo is considerd to be
@@ -59,7 +61,7 @@ fres_t fifo_in(struct NODE *node, void *unit)
 
 	FIFO_LOCK(node);
 	{
-		WRITEONEUNIT2FIFO(node, unit);
+        WRITEONEUNIT_INTOFIFO(node, unit);
 
 		HEADNODE_MOVE2NEXT(node);
 		if(node->head == node->end)
@@ -97,7 +99,7 @@ fres_t fifo_inl(struct NODE *node, void *unit)
 			return F_ERR_NM;
 		}
 
-		WRITEONEUNIT2FIFO(node, unit);
+        WRITEONEUNIT_INTOFIFO(node, unit);
 		HEADNODE_MOVE2NEXT(node);
 	}
 	FIFO_UNLOCK(node);
@@ -129,7 +131,7 @@ fres_t fifo_out(struct NODE *node, void *unit)
 			FIFO_UNLOCK(node);
 			return F_ERR_NM;
 		}
-		memcpy(unit, (node->fifo) + (node->end) * (node->usz), node->usz);
+        READONEUNIT_FROMFIFO(node, unit);
 		ENDNODE_MOVE2NEXT(node);
 	}
 	FIFO_UNLOCK(node);
@@ -162,8 +164,8 @@ fres_t fifo_read(struct NODE *node, void *units, unsigned int cnt, unsigned int 
 	{
 		while(node->end != node->head)
 		{
-			memcpy(units, (node->fifo) + (node->end) * (node->usz), node->usz);
-			UNITMOVE2NEXT(node, units);
+            READONEUNIT_FROMFIFO(node, units);
+            UNIT_MOVE2NEXT(node, units);
 			ENDNODE_MOVE2NEXT(node);
 			if(++i >= cnt)
 			{
@@ -203,8 +205,8 @@ fres_t fifo_peep(struct NODE *node, void *units, unsigned int cnt, unsigned int 
 	    _end = node->end;
 		while(_end != node->head)
 		{
-			memcpy(units, (node->fifo + _end * node->usz), node->usz);
-			UNITMOVE2NEXT(node, units);
+            READANYUNIT_FROMFIFO(node, units, _end);
+            UNIT_MOVE2NEXT(node, units);
 
 			if(++_end >= (node->fifo_deep + 1))
             {
@@ -246,7 +248,7 @@ fres_t fifo_od(struct NODE *node, void *unit)
 			FIFO_UNLOCK(node);
 			return F_ERR_NM;
 		}
-		memcpy(unit, (node->fifo) + (node->end) * (node->usz), node->usz);
+        READONEUNIT_FROMFIFO(node, unit);
 	}
 	FIFO_UNLOCK(node);
 
@@ -289,7 +291,7 @@ fres_t fifo_nd(struct NODE *node, void *unit)
 		{
 			_head = node->head - 1;
 		}
-		memcpy(unit, (node->fifo + _head * node->usz), node->usz);
+        READANYUNIT_FROMFIFO(node, unit, _head);
 	}
 	FIFO_UNLOCK(node);
 
@@ -322,8 +324,8 @@ fres_t fifo_write(struct NODE *node, void *units, unsigned int cnt, unsigned int
 	{
 		for(i = 0; i < cnt; i++)
 		{
-			WRITEONEUNIT2FIFO(node, units);
-			UNITMOVE2NEXT(node, units);
+            WRITEONEUNIT_INTOFIFO(node, units);
+            UNIT_MOVE2NEXT(node, units);
 
 			HEADNODE_MOVE2NEXT(node);
 			if(node->head == node->end)
@@ -368,8 +370,8 @@ fres_t fifo_writel(struct NODE *node, void *units, unsigned int cnt, unsigned in
 				goto out;
 			}
 
-			WRITEONEUNIT2FIFO(node, units);
-			UNITMOVE2NEXT(node, units);
+            WRITEONEUNIT_INTOFIFO(node, units);
+            UNIT_MOVE2NEXT(node, units);
 			HEADNODE_MOVE2NEXT(node);
 		}
 	}
