@@ -147,7 +147,7 @@ fres_t fifo_out(struct NODE *node, void *unit)
  */
 fres_t fifo_read(struct NODE *node, void *units, unsigned int cnt, unsigned int *rc)
 {
-	int i = 0;
+    unsigned int i = 0;
 
 	if(!node || !units || !cnt || !rc)
 	{
@@ -307,7 +307,7 @@ fres_t fifo_nd(struct NODE *node, void *unit)
  */
 fres_t fifo_write(struct NODE *node, void *units, unsigned int cnt, unsigned int *wc)
 {
-	int i;
+    unsigned int i;
 
 	if(!node || !units || !cnt || !wc)
 	{
@@ -477,7 +477,7 @@ int main(void)
 	if(x != F_OK) {printf("[ERROR]:@%s@%d,res=%d\n", __FUNCTION__, __LINE__, x); return -1;}
 
 #define MY_FIFOCNT	10    /* 9 deep in fact */
-typedef long long USER_DATATYPE;
+typedef int USER_DATATYPE;
 
 	USER_DATATYPE data[MY_FIFOCNT];
 	struct NODE node;
@@ -514,7 +514,6 @@ typedef long long USER_DATATYPE;
 
 	// read fifo with one by one
 	{
-		USER_DATATYPE buf[MY_FIFOCNT] = {0};
 		USER_DATATYPE read;
 		unsigned int i;
 
@@ -555,7 +554,6 @@ typedef long long USER_DATATYPE;
 	// read fifo with many units
 	{
 		USER_DATATYPE buf[20] = {0};
-		USER_DATATYPE read;
 		unsigned int rc, i;
 
 		printf("read fifo ...\n");
@@ -596,7 +594,6 @@ typedef long long USER_DATATYPE;
 	// read fifo with many units
 	{
 		USER_DATATYPE buf[20] = {0};
-		USER_DATATYPE read;
 		unsigned int rc, i;
 
 		printf("read fifo ...\n");
