@@ -13,3 +13,7 @@
 * should add a NAND-FLASH FTL.
 
 * should add a malloc implementation.
+
+* should add a button routine contains button long press, short press, double click and treble click detaction.
+
+* should add an input mathod that support chinese and english input.
