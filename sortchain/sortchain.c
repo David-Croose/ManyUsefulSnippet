@@ -7,10 +7,12 @@
 
 ********************************************************************************/
 
+#include <stdio.h>
 #include <string.h>
 #include "sortchain.h"
 
-#define MAX_SEQ     (4000000000)     /* more larger more better */
+// the sequence is in [0, MAX_SEQ)
+#define MAX_SEQ     (4000000000)     /* the larger the better */
 
 /**
  * judge is a @handle full
@@ -51,7 +53,7 @@ static schres_t find_emptynode(schh_t *handle, schnode_t **node)
  */
 static void delete_oldestdata(schh_t *handle)
 {
-    schnode_t *anynode;
+    schnode_t *anynode, *deletenode;
 
     // if the first one is the oldest one
     if(handle->head->seq == handle->oldestseq)
@@ -61,7 +63,7 @@ static void delete_oldestdata(schh_t *handle)
         anynode->next = NULL;
         anynode->hasdata_flag = SCH_FALSE;
         anynode->data = 0;
-        handle->oldestseq = anynode->seq + 1;
+        handle->oldestseq++;
         anynode->seq = 0;
         return;
     }
@@ -69,14 +71,15 @@ static void delete_oldestdata(schh_t *handle)
     // if the oldest one isn't in the first place
     for(anynode = handle->head; anynode != NULL; anynode = anynode->next)
     {
-        if(anynode->next->seq == handle->oldestseq)
+        if((anynode->next->seq == handle->oldestseq))
         {
-            anynode->next = anynode->next->next;
-            anynode->next->next = NULL;
-            anynode->next->hasdata_flag = SCH_FALSE;
-            handle->oldestseq = anynode->next->seq + 1;
-            anynode->next->seq = 0;
-            anynode->next->data = 0;
+            deletenode = anynode->next;
+            anynode->next = deletenode->next;
+            deletenode->next = NULL;
+            deletenode->hasdata_flag = SCH_FALSE;
+            handle->oldestseq++;
+            deletenode->seq = 0;
+            deletenode->data = 0;
             return;
         }
     }
@@ -95,7 +98,7 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
     schnode_t *anynode;
 
     // find an empty node to fill
-    if(find_emptynode(handle, &node) != SCH_TRUE)
+    if(find_emptynode(handle, &node) != SCHRES_OK)
     {
         return SCHRES_ERR;
     }
@@ -105,6 +108,11 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
     (*node).seq = handle->newestseq++;
     (*node).hasdata_flag = SCH_TRUE;
     (*node).next = NULL;
+    if(handle->newestseq - handle->oldestseq == 1)
+    {
+        // if there is only one data in sort chain now
+        return SCHRES_OK;
+    }
 
     // insert the data
     for(anynode = handle->head; anynode != NULL; anynode = anynode->next)
@@ -121,6 +129,7 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
                 {
                     (*node).next = anynode->next;
                     anynode->next = node;
+                    break;
                 }
             }
             else
@@ -129,6 +138,7 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
                 // would be in the end position
                 anynode->next = node;
                 (*node).next = NULL;
+                break;
             }
         }
         else
@@ -137,13 +147,14 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
             // it be the head
             (*node).next = handle->head;
             handle->head = node;
+            break;
         }
     }
 
     // set the chain's full flag
     if(handle->full_flag != SCH_TRUE)
     {
-        if(handle->newestseq - handle->oldestseq + 1 >= SCH_NODES_TOTAL)
+        if(handle->newestseq - handle->oldestseq >= SCH_NODES_TOTAL)
         {
             handle->full_flag = SCH_TRUE;
         }
@@ -160,7 +171,7 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
  */
 static char is_seqtop(schh_t *handle)
 {
-    if(handle->newestseq >= MAX_SEQ)
+    if(handle->newestseq - 1 >= MAX_SEQ)
     {
         return SCH_TRUE;
     }
@@ -179,6 +190,8 @@ static void reset_all_seq(schh_t *handle)
     {
         handle->nodes[i].seq -= handle->oldestseq;
     }
+    handle->newestseq -= handle->oldestseq;
+    handle->oldestseq -= handle->oldestseq;
 }
 
 /**
@@ -233,7 +246,10 @@ schres_t sortchain_add(schh_t *handle, schdat_t data, schdat_t *mid)
     if(is_full(handle) == SCH_TRUE)
     {
         delete_oldestdata(handle);
-        insert_newestdata(handle, data);
+        if(insert_newestdata(handle, data) != SCHRES_OK)
+        {
+            return SCHRES_ERR;
+        }
         if(is_seqtop(handle) == SCH_TRUE)
         {
             reset_all_seq(handle);
@@ -242,20 +258,47 @@ schres_t sortchain_add(schh_t *handle, schdat_t data, schdat_t *mid)
     }
     else
     {
-        insert_newestdata(handle, data);
+        if(insert_newestdata(handle, data) != SCHRES_OK)
+        {
+            return SCHRES_ERR;
+        }
         return SCHRES_NOTREADY;
     }
 
     return SCHRES_OK;
 }
 
-void demo_main(void)
+int demo_main(void)
 {
+    schres_t res;
     schh_t datalib;
-    schdat_t dat = 34;
     schdat_t mid;
+    schdat_t dat[] = {5, 9, 1, 8, 6, 2, 0, 3, 4, 7};
+    /// schdat_t dat[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    unsigned int i;
 
-    sortchain_init(&datalib);
-    sortchain_add(&datalib, dat, &mid);
+    if(sortchain_init(&datalib) != SCHRES_OK)
+    {
+        printf("init error!\n");
+        return -1;
+    }
 
+    for(i = 0; i < sizeof(dat) / sizeof(dat[0]); i++)
+    {
+        res = sortchain_add(&datalib, dat[i], &mid);
+        if(res == SCHRES_OK)
+        {
+            printf("%d ", mid);
+        }
+        else if(res == SCHRES_NOTREADY)
+        {
+            printf("-");
+        }
+        else
+        {
+            printf("run error!\n");
+            return -2;
+        }
+    }
+    return 0;
 }
