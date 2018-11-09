@@ -7,6 +7,7 @@
 
 ********************************************************************************/
 
+#include <string.h>
 #include "sortchain.h"
 
 #define MAX_SEQ     (4000000000)     /* more larger more better */
@@ -100,42 +101,42 @@ static schres_t insert_newestdata(schh_t *handle, schdat_t data)
     }
 
     // fill the node
-    (**node).data = data;
-    (**node).seq = handle->newestseq++;
-    (**node).hasdata_flag = SCH_TRUE;
-    (**node).next = NULL;
+    (*node).data = data;
+    (*node).seq = handle->newestseq++;
+    (*node).hasdata_flag = SCH_TRUE;
+    (*node).next = NULL;
 
     // insert the data
     for(anynode = handle->head; anynode != NULL; anynode = anynode->next)
     {
         // if data > head, make it compare to the latter datas one by one until
         // we get it's position
-        if(anynode.data < data)
+        if(anynode->data < data)
         {
             // if anynode < data < anynode.next, then the data could lay
             // between them
             if(anynode->next != NULL)
             {
-                if(data < anynode->next.data)
+                if(data < anynode->next->data)
                 {
-                    (**node).next = anynode->next;
-                    anynode->next = *node;
+                    (*node).next = anynode->next;
+                    anynode->next = node;
                 }
             }
             else
             {
                 // if anynode < data < anynode.next==NULL, then the data
                 // would be in the end position
-                anynode->next = *node;
-                (**node).next = NULL;
+                anynode->next = node;
+                (*node).next = NULL;
             }
         }
         else
         {
             // data <= head, we place it in the left of the head, and make
             // it be the head
-            (**node).next = handle->head;
-            handle->head = *node;
+            (*node).next = handle->head;
+            handle->head = node;
         }
     }
 
@@ -252,9 +253,9 @@ void demo_main(void)
 {
     schh_t datalib;
     schdat_t dat = 34;
-    schdat_t *mid;
+    schdat_t mid;
 
     sortchain_init(&datalib);
-    sortchain_add(datalib, dat, &mid);
+    sortchain_add(&datalib, dat, &mid);
 
 }
