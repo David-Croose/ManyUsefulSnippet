@@ -12,7 +12,7 @@
 
 // user configure here
 typedef int schdat_t;       /* sort chain data */
-#define SCH_NODES_TOTAL     (101)
+#define SCH_NODES_TOTAL     (5)
 
 #if ((SCH_NODES_TOTAL / 2 * 2) == SCH_NODES_TOTAL)
 #   error the @SCH_NODES_TOTAL must be odd!
@@ -36,7 +36,9 @@ typedef struct {
     schnode_t nodes[SCH_NODES_TOTAL];   // TODO  should be configurable here
     char full_flag;
     unsigned int oldestseq;     // the oldest sequence
-    unsigned int newestseq;     // the newest sequence
+    unsigned int newestseq;     // the newest sequence, note that the variable
+                                // represents the new coming data seq, the real
+                                // newest seq in sort chain is @newestseq - 1
     schnode_t *head;
 } schh_t;
 
