@@ -25,11 +25,11 @@ typedef int schdat_t;       /* sort chain data */
 #define SCH_TRUE    (1)
 #define SCH_FALSE   (0)
 
-typedef struct {
+typedef struct SCHNODE {
     schdat_t data;
     unsigned int seq;
     char hasdata_flag;
-    schnode_t *next;
+    struct SCHNODE *next;
 } schnode_t;   // sort chain node
 
 typedef struct {
