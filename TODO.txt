@@ -4,7 +4,7 @@
 * should add a universal(not NAND-FLASH) FLASH-driver, it can read, write, erase any FLASH memory chip, and provides many
   configurations for user.
 
-* should add an arg enter routine.
+* should add an arg enter routine. in other words, a shell
 
 * should add FFT, IIR filters(and many others like that).
 
@@ -17,3 +17,5 @@
 * should add a button routine contains button long press, short press, double click and treble click detaction.
 
 * should add an input mathod that support chinese and english input.
+
+* should add a log component, which can be ported to any RTOS or bare-metal routine.
