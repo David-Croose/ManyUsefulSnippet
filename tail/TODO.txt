@@ -1,1 +1,3 @@
-should add support for HEX print
+* should add support for HEX print
+
+* should add support for word-wrap, word-filt, table-display
