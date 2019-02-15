@@ -27,11 +27,12 @@ int main(void)
     res = func();
     tail_pin(res, "err", "an error occure, this is just a demo, don't worry");
 
-    tail_emerge("info", "the demo runs up");
+    tail_emerge("info", "the demo runs up. abc=%s, 123=%d", "abc", 123);
 
-    tail_pin(TAIL_SAV_ONLY, "warn", "i just want to");
+    tail_pin(TAIL_SAV_ONLY, "warn", "this is just a demo, don't worry, code=%#x", 0x123);
 
     tail_printall();
 
     return 0;
 }
+

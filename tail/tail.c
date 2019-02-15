@@ -8,6 +8,7 @@
 #include "tail.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 // the local variables
 static struct NODE fifohdl;                              // fifo handle
@@ -38,12 +39,13 @@ void tail_init(void)
  * @param func: the name of function calls this function
  * @param line: the line number where this function was called
  */
-void tail_print(tailopt_t opt, char *tag, char *info,
-                const char *file, const char *func, uint32_t line)
+void tail_print(tailopt_t opt, const char *tag, const char *file, const char *func,
+                uint32_t line, const char *fmt, ...)
 {
     static char buf[TAIL_BUFSIZE];
+    static char buffer[TAIL_BUFSIZE];
     const char *_tag = tag;
-    const char *_info = info;
+    va_list args;
 
     TAIL_CRITICAL_ENTER();
 
@@ -51,20 +53,24 @@ void tail_print(tailopt_t opt, char *tag, char *info,
     {
         _tag = "warn";
     }
-    if(!info)
+
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    if(buffer[0] == '\0')
     {
-        _info = "---";
+        strcpy(buffer, "---");
     }
 
     memset(buf, 0, sizeof(buf));
     if(file)
     {
         snprintf(buf, sizeof(buf), "[%s] %s, in \"file:%s,func:%s,line:%d\"",
-                 _tag, _info, file, func, line);
+                 _tag, buffer, file, func, line);
     }
     else
     {
-        snprintf(buf, sizeof(buf), "[%s] %s", _tag, _info);
+        snprintf(buf, sizeof(buf), "[%s] %s", _tag, buffer);
     }
 
     switch(opt)
