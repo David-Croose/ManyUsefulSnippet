@@ -4,138 +4,197 @@
                      an universal AT instruction driver frame work
 
 ***************************************************************************************/
-
 #include <stdint.h>
 #include <string.h>
 #include "atfw.h"
 #include "atfw_config.h"
 
-static atfwres_t init_flag = ATFW_ERR;
-static int sending_flag;
-static int receiving_flag;
+typedef enum {
+    STA_IDLE, 
+    STA_BUSY,
+} sta_t;
 
-static atfwres_t findstr(const char *str, const char *pat, char *found, uint32_t foundsz)
+static atfwres_t init_flag = ATFW_ERR;
+static sta_t sta_flag;
+
+/**
+ * lock the atfw
+ * @return 0 --- lock successfully
+ *         1 --- lock failed
+ */
+#define LOCK()      ((sta_flag == STA_IDLE) ? (sta_flag = STA_BUSY, 0) : (1))
+#define UNLOCK()    sta_flag = STA_IDLE;
+
+/**
+ * atfw initialization
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
+ */
+atfwres_t atfw_init(void)
 {
-    if (!str || !pat) {
-        dbg_printf("err, the @str and @pat of @%s can not be NULL!\n", __FUNC__);
+    if (LOCK()) {
         return ATFW_ERR;
     }
 
-
-}
-
-atfwres_t atfw_init(void)
-{
     if (at_init() < 0 || os_queue_init() < 0) {
         init_flag = ATFW_ERR;
         dbg_printf("err, the atfw initialization failed!\n");
-        return init_flag;
+        goto out;
     }
     init_flag = ATFW_OK;
+
+out:
+    UNLOCK();
     return init_flag;
 }
 
 /**
- * AT-Frame-Work send data(@send) to the remote then wait response from the remote
+ * atfw send data(@send) to the remote then wait response from the remote
  * @param send: the data to be sent
- * @param aftsend: After-Send. is a callback routine performed after the @send has been sent
- * @param recv: the data you expect to receive(note that if the receive data contains the
+ * @param sendsz: the length(in bytes) of @data
+ * @param recv: the data(string) you expect to receive(note that if the receive data contains the
  *              @recv, this function will consider it gets the @recv)
- * @param aftrecv: After-Receive. is a callback routine performed after the @recv has been
- *                 received
- * @param found: if the @recv received, @recv will be copy to @found
+ * @param found: if the @recv received, @recv will be copied to @found
  * @param foundsz: the size(in bytes) of @found
  * @param timeout: the timeout(in ms) while receiving the data you expected
- * @return: ATFW_OK if everything ok, see @atfwres_t for more details
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
-atfwres_t atfw_sendwait(const char *send, cb_t *aftsend, const char *recv, cb_t *aftrecv,
-                        char *found, uint32_t foundsz, uint32_t timeout)
+atfwres_t atfw_sendwait(const uint8_t *send, uint32_t sendsz, const char *recv, 
+                        uint8_t *found, uint32_t foundsz, uint32_t timeout)
 {
-    static char buf[CFG_RECV_BUF_SIZE];
-    char *p;
+    static uint8_t resp[CFG_RECV_BUF_SIZE];
+    uint32_t respsz;
+    uint8_t *p;
+
+    if (LOCK()) {
+        return ATFW_ERR;
+    }
 
     /*
-     * check parameter
+     * check parameters
      */
     if (init_flag != ATFW_OK) {
         dbg_printf("err, the atfw has not initialized yet!\n");
-        return ATFW_ERR;
+        goto err;
     }
 
-    if (os_getrunenv()) {
-        dgb_printf("err, atfw can only run in RTOS environment!\n");
-        return ATFW_ERR;
+    if (os_getrunenv() != ENV_RTOS) {
+        dbg_printf("err, @%s can only run in RTOS environment!\n", __FUNCTION__);
+        goto err;
     }
 
-    if (!send && !aftsend) {
-        dgb_printf("err, @send and @aftsend of @%s can not be NULL"
-                   "at the same time!\n", __FUNC__);
-        return ATFW_ERR;
+    if (!send && !sendsz) {
+        dbg_printf("err, @send and @sendsz error in @%s\n", __FUNCTION__);
+        goto err;
     }
 
     /* 
      * now, the real process begin
      */
-    if (send) {
-        if (at_send(send, strlen(send)) != ATFW_OK) {
-            dgb_printf("err, at send failed!s\n");
-            return ATFW_ERR;
-        }
+    if (at_send(send, sendsz) != ATFW_OK) {
+        dbg_printf("err, at-device send failed\n");
+        goto err;
     }
 
-    if (aftsend) {
-        aftsend();
-    }
-
-    memset(buf, 0, sizeof(buf));
-    if (!os_queue_wait(buf, sizeof(buf), timeout)) {      // if we got the queue
-        if (p = strstr(buf, recv)) {
+    memset(resp, 0, sizeof(resp));
+    if (!os_queue_wait(resp, sizeof(resp), &respsz, timeout)) {        // if we got the response
+        if (recv) {
+            // TODO  is it better to implement in regular-expression?
+            if (p = strstr(resp, recv)) {  // it is accepted that if the response contains what we expected
+                if (found && foundsz) {
+                    memset(found, 0, foundsz);
+                    strncpy(found, p, foundsz);
+                    if (strlen(p) > foundsz) {
+                        dbg_printf("warn, the buffer(len=%d) matched in the response is larger than @found(len=%d),"
+                                   " which means you may lost some information", respsz, foundsz);
+                    }
+                }
+            } else {
+                goto err;
+            }
+        } else {  // if @recv is NULL, which means we don't care what we received, just copy it to @found
             if (found && foundsz) {
                 memset(found, 0, foundsz);
-                strncpy(found, p, foundsz);
+                if (respsz <= foundsz) {
+                    memcpy(found, p, respsz);
+                } else {
+                    memcpy(found, p, foundsz);
+                    dbg_printf("warn, the buffer(len=%d) matched in the response is larger than @found(len=%d),"
+                               " which means you may lost some information", respsz, foundsz);
+                }
             }
-        } else if (!recv) {
-            if (found && foundsz) {
-                memset(found, 0, foundsz);
-                strncpy(found, buf, foundsz);
-            }
-        } else {
-            dgb_printf("err, the at cmd(%s) got a wrong response!\n", send);
-            return ATFW_ERR;
         }
     } else {
-        dgb_printf("err, the at cmd(%s) not responding!\n", send);
-        return ATFW_ERR;
+        goto err;
     }
 
-    if (aftrecv) {
-        aftrecv();
-    }
-
+    UNLOCK();
     return ATFW_OK;
-}
 
-atfwres_t atfw_send(const char *send, uint32_t sendsz)
-{
-    if (send && sendsz) {
-        at_send(send, sendsz);
-    }
-    return ATFW_OK;
+err:
+    UNLOCK();
+    return ATFW_ERR;
 }
 
 /**
- *
- * 
+ * just send data via at-device
+ * @param send: the data to be sent
+ * @param sendsz: the length(in bytes) of @data
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
-void atfw_recv(const char *recv, uint32_t recvsz)
+atfwres_t atfw_send(const uint8_t *send, uint32_t sendsz)
+{
+    if (LOCK()) {
+        return ATFW_ERR;
+    }
+
+    if (send && sendsz) {
+        if (at_send(send, sendsz)) {
+            goto err;
+        }
+    } else {
+        goto err;
+    }
+
+    UNLOCK();
+    return ATFW_OK;
+
+err:
+    UNLOCK();
+    return ATFW_ERR;
+}
+
+/**
+ * receive data from at-device
+ * @param recv: the received data from hardware at-device
+ * @param recvsz: the length(in bytes) of @recv
+ * @note: if user application wants to receive data from at-device, use @atfw_sendwait.
+ *        this function, however, runs in low-level driver, receives first-hand data
+ *        from hardware at-device then sends it to @atfw_sendwait
+ */
+void atfw_recv(const uint8_t *recv, uint32_t recvsz)
 {
     if (recv && recvsz) {
         os_queue_send(recv, recvsz);
     }
 }
 
+/**
+ * io-control of hardware at-device
+ * @param cmd: the user command to control hardware at-device
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
+ */
 atfwres_t atfw_ioctl(void *cmd)
 {
+    if (LOCK()) {
+        return ATFW_ERR;
+    }
 
+    if (at_ioctl(cmd)) {
+        UNLOCK();
+        return ATFW_ERR;
+    }
+
+    UNLOCK();
+    return ATFW_OK;
 }
 
