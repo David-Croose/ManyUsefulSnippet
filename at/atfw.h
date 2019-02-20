@@ -9,14 +9,12 @@
 
 #include <stdint.h>
 
-
 typedef enum {
     ATFW_OK = 0,
     ATFW_ERR,
 } atfwres_t;
 
 typedef int32_t cb_t(void *);
-
 
 #endif
 

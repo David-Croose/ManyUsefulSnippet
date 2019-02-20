@@ -58,6 +58,7 @@ out:
  * @param timeout: the timeout(in ms) while receiving the data you expected
  * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
+// TODO  maybe you should add a parameter: recvsz, indicates how many bytes it gets
 atfwres_t atfw_sendwait(const uint8_t *send, uint32_t sendsz, const char *recv, 
                         uint8_t *found, uint32_t foundsz, uint32_t timeout)
 {
