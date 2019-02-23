@@ -5,12 +5,13 @@
 
 ***************************************************************************************/
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include "atfw.h"
 #include "atfw_config.h"
 
 typedef enum {
-    STA_IDLE, 
+    STA_IDLE,
     STA_BUSY,
 } sta_t;
 
@@ -35,7 +36,7 @@ atfwres_t atfw_init(void)
         return ATFW_ERR;
     }
 
-    if (at_init() < 0 || os_queue_init() < 0) {
+    if (at_init() != 0|| os_queue_init() != 0) {
         init_flag = ATFW_ERR;
         dbg_printf("err, the atfw initialization failed!\n");
         goto out;
@@ -48,83 +49,194 @@ out:
 }
 
 /**
- * atfw send data(@send) to the remote then wait response from the remote
- * @param send: the data to be sent
- * @param sendsz: the length(in bytes) of @data
- * @param recv: the data(string) you expect to receive(note that if the receive data contains the
- *              @recv, this function will consider it gets the @recv)
- * @param found: if the @recv received, @recv will be copied to @found
- * @param foundsz: the size(in bytes) of @found
- * @param timeout: the timeout(in ms) while receiving the data you expected
+ * atfw send string to the hardware-at-device then wait for response(specified by user) from the latter
+ * @param send: the string to be sent
+ * @param expect: the string you expect to receive(note that if the receive string contains the @expect
+ *                this function will consider it gets the @expect), NULL indicates you don't care what
+ *                you get, all received string will be copied to @found if possible
+ * @param found: if the string specified by @expect received, the matched part of receive string will be
+ *               copied to @found. if you don't want it copy, let it be NULL
+ * @param foundsz: the size(in bytes) of @found. if you don't want it copy, let it be NULL
+ * @param timeout: the timeout(in ms) while receiving the response you expected
  * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
-// TODO  maybe you should add a parameter: recvsz, indicates how many bytes it gets
-atfwres_t atfw_sendwait(const uint8_t *send, uint32_t sendsz, const char *recv, 
-                        uint8_t *found, uint32_t foundsz, uint32_t timeout)
+atfwres_t atfw_sendwaitstr(const char *send, const char *expect, char *found, uint32_t foundsz, uint32_t timeout)
 {
-    static uint8_t resp[CFG_RECV_BUF_SIZE];
+    static char resp[CFG_RECV_BUF_SIZE];
     uint32_t respsz;
-    uint8_t *p;
+    char *p;
+    atfwres_t res;
+
+    /*
+     * check parameters
+     */
+    if (init_flag != ATFW_OK) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (!send || !strlen(send)) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (os_getrunenv() != 1) {
+        res = ATFW_ERR;
+        goto err;
+    }
 
     if (LOCK()) {
         return ATFW_ERR;
     }
 
     /*
-     * check parameters
-     */
-    if (init_flag != ATFW_OK) {
-        dbg_printf("err, the atfw has not initialized yet!\n");
-        goto err;
-    }
-
-    if (os_getrunenv() != ENV_RTOS) {
-        dbg_printf("err, @%s can only run in RTOS environment!\n", __FUNCTION__);
-        goto err;
-    }
-
-    if (!send && !sendsz) {
-        dbg_printf("err, @send and @sendsz error in @%s\n", __FUNCTION__);
-        goto err;
-    }
-
-    /* 
      * now, the real process begin
      */
-    if (at_send(send, sendsz) != ATFW_OK) {
-        dbg_printf("err, at-device send failed\n");
+    if (at_send(send, strlen(send)) != ATFW_OK) {
+        res = ATFW_ERR;
         goto err;
     }
 
-    memset(resp, 0, sizeof(resp));
     if (!os_queue_wait(resp, sizeof(resp), &respsz, timeout)) {        // if we got the response
-        if (recv) {
+        if (respsz > sizeof(resp) - 1) {
+            dbg_printf("warn, the buffer(len=%d) matched in the response is larger than @found(len=%d),"
+                       " which means you may lost some information", respsz, foundsz);
+            resp[sizeof(resp)] = 0;
+        } else {
+            resp[respsz] = 0;
+        }
+
+        if (expect) {
             // TODO  is it better to implement in regular-expression?
-            if (p = strstr(resp, recv)) {  // it is accepted that if the response contains what we expected
+            // if the response from hardware-at-device is what we expected
+            if (p = strstr(resp, expect)) {
                 if (found && foundsz) {
-                    memset(found, 0, foundsz);
-                    strncpy(found, p, foundsz);
-                    if (strlen(p) > foundsz) {
+                    if (respsz <= foundsz - 1) {
+                        strncpy(found, resp, respsz);
+                        found[respsz] = 0;
+                    } else {
                         dbg_printf("warn, the buffer(len=%d) matched in the response is larger than @found(len=%d),"
                                    " which means you may lost some information", respsz, foundsz);
                     }
                 }
             } else {
+                res = ATFW_ERR;
                 goto err;
             }
-        } else {  // if @recv is NULL, which means we don't care what we received, just copy it to @found
+        } else {  // if @expect is NULL, which means we don't care what we received, just copy it to @found
             if (found && foundsz) {
-                memset(found, 0, foundsz);
-                if (respsz <= foundsz) {
-                    memcpy(found, p, respsz);
+                if (respsz <= foundsz - 1) {
+                    strncpy(found, resp, respsz);
+                    found[respsz] = 0;
                 } else {
-                    memcpy(found, p, foundsz);
                     dbg_printf("warn, the buffer(len=%d) matched in the response is larger than @found(len=%d),"
                                " which means you may lost some information", respsz, foundsz);
                 }
             }
         }
     } else {
+        res = ATFW_TIMEOUT;
+        goto err;
+    }
+
+    UNLOCK();
+    return ATFW_OK;
+
+err:
+    UNLOCK();
+    return res;
+}
+
+/**
+ * atfw send buffer(any data) to the hardware-at-device then wait for any response from the latter
+ * @param send: the buffer to be sent
+ * @param sendsz: the size(in bytes) of @send
+ * @param recv: the buffer will the received data copy to
+ * @param recvsz: the size(in bytes) of @recv
+ * @param respsz: the size(in bytes) of hardware-at-device received data
+ * @param timeout: the timeout(in ms) while receiving the response
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
+ */
+atfwres_t atfw_sendwaitbuf(const uint8_t *send, uint32_t sendsz, uint8_t *recv, uint32_t recvsz,
+                           uint32_t *respsz, uint32_t timeout)
+{
+    static char resp[CFG_RECV_BUF_SIZE];
+    atfwres_t res;
+
+    /*
+     * check parameters
+     */
+    if (init_flag != ATFW_OK) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (!send || !sendsz) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (os_getrunenv() != 1) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (LOCK()) {
+        return ATFW_ERR;
+    }
+
+    /*
+     * now, the real process begin
+     */
+    if (at_send(send, sendsz) != ATFW_OK) {
+        res = ATFW_ERR;
+        goto err;
+    }
+
+    if (!os_queue_wait(resp, sizeof(resp), respsz, timeout)) {        // if we got the response
+        if (recv && recvsz) {
+            if (*respsz <= recvsz) {
+                memcpy(recv, resp, *respsz);
+            } else {
+                memcpy(recv, resp, recvsz);
+                dbg_printf("warn, the response-buffer(len=%d) is larger than @recv(len=%d),"
+                           " which means you may lost some information", *respsz, recvsz);
+            }
+        }
+    } else {
+        res = ATFW_TIMEOUT;
+        goto err;
+    }
+
+    UNLOCK();
+    return ATFW_OK;
+
+err:
+    UNLOCK();
+    return res;
+}
+
+/**
+ * just send buffer to hardware-at-device, without receiving
+ * @param send: the data to be sent
+ * @param sendsz: the size(in bytes) of @send
+ * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
+ */
+atfwres_t atfw_send(const uint8_t *send, uint32_t sendsz)
+{
+    if (init_flag != ATFW_OK) {
+        goto err;
+    }
+
+    if (!send && !sendsz) {
+        goto err;
+    }
+
+    if (LOCK()) {
+        return ATFW_ERR;
+    }
+
+    if (at_send(send, sendsz)) {
         goto err;
     }
 
@@ -137,20 +249,40 @@ err:
 }
 
 /**
- * just send data via at-device
- * @param send: the data to be sent
- * @param sendsz: the length(in bytes) of @data
+ * receive data from hardware-at-device
+ * @param recv: the buffer will the received data copy to
+ * @param recvsz: the size(in bytes) of @recv
+ * @param respsz: the size(in bytes) of hardware-at-device received data
+ * @param timeout: the timeout(in ms) while receiving data
  * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
-atfwres_t atfw_send(const uint8_t *send, uint32_t sendsz)
+atfwres_t atfw_recv(uint8_t *recv, uint32_t recvsz, uint32_t *respsz, uint32_t timeout)
 {
+    static char resp[CFG_RECV_BUF_SIZE];
+
+    if (init_flag != ATFW_OK) {
+        goto err;
+    }
+
+    if (!recv || !recvsz || !respsz) {
+        goto err;
+    }
+
+    if (os_getrunenv() != 1) {
+        goto err;
+    }
+
     if (LOCK()) {
         return ATFW_ERR;
     }
 
-    if (send && sendsz) {
-        if (at_send(send, sendsz)) {
-            goto err;
+    if (!os_queue_wait(resp, sizeof(resp), respsz, timeout)) {        // if we got the response
+        if (*respsz <= recvsz) {
+            memcpy(recv, resp, *respsz);
+        } else {
+            memcpy(recv, resp, recvsz);
+            dbg_printf("warn, the response-buffer(len=%d) is larger than @recv(len=%d),"
+                       " which means you may lost some information", *respsz, recvsz);
         }
     } else {
         goto err;
@@ -165,27 +297,20 @@ err:
 }
 
 /**
- * receive data from at-device
- * @param recv: the received data from hardware at-device
- * @param recvsz: the length(in bytes) of @recv
- * @note: if user application wants to receive data from at-device, use @atfw_sendwait.
- *        this function, however, runs in low-level driver, receives first-hand data
- *        from hardware at-device then sends it to @atfw_sendwait
- */
-void atfw_recv(const uint8_t *recv, uint32_t recvsz)
-{
-    if (recv && recvsz) {
-        os_queue_send(recv, recvsz);
-    }
-}
-
-/**
- * io-control of hardware at-device
- * @param cmd: the user command to control hardware at-device
+ * io-control of hardware-at-device
+ * @param cmd: the user command to control hardware-at-device
  * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
 atfwres_t atfw_ioctl(void *cmd)
 {
+    if (init_flag != ATFW_OK) {
+        return ATFW_ERR;
+    }
+
+    if (!cmd) {
+        return ATFW_ERR;
+    }
+
     if (LOCK()) {
         return ATFW_ERR;
     }
