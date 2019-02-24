@@ -21,58 +21,43 @@
 
 ***************************************************************************************/
 #if (CFG_DEBUG_ENABLE == 1)
-#include <stdarg.h>
-
-static int dbg_printf(const char *fmt, ...)
-{
-
-
-}
+#include <stdio.h>
+#define dbg_printf(fmt...)    printf(fmt)
 #else
 #define dbg_printf(x)    ...
 #endif
-}
 
 /***************************************************************************************
 
                                     The RTOS portion
 
 ***************************************************************************************/
-#include "FreeRTOS.h"
-
-typedef enum {
-    ENV_BAREMATAL,
-    ENV_RTOS,
-} env_t;
+#include <stdint.h>
+#include <string.h>
 
 /**
- * get running environment
+ * get run environment
+ * @return: 1 --- RTOS
+ *          0 --- BareMetal
  */
-static env_t os_getrunenv(void)
+static int os_getrunenv(void)
 {
-
-
+    return 1;
 }
 
-static int os_delay(uint32_t ms)
+static int os_queue_init(void)
 {
     return 0;
 }
 
-static int os_queue_init()
+static int os_queue_wait(uint8_t *buf, uint32_t bufsz, uint32_t *recvsz, uint32_t timeout)
 {
 
 }
 
-static int os_queue_wait()
+int os_queue_send(const uint8_t *resp, uint32_t respsz)
 {
-
-
-}
-
-static int os_queue_send()
-{
-
+    return 0;
 }
 
 /***************************************************************************************
@@ -80,31 +65,102 @@ static int os_queue_send()
                                  The hardware portion
 
 ***************************************************************************************/
-#include "driver/pcsim.h"
+static int at_init(void)
+{
+    at_send();
 
-static int at_init()
+
+    return 0;
+}
+
+static int at_send(const uint8_t *send, uint32_t sendsz)
 {
 
 }
 
-static int at_reset()
+#define SIM7X00_RES_SOCK_ACTIVE      5
+#define SIM7X00_RES_SOCK_DEACTIVE      5
+#define SIM7X00_RES_TIMEOUT         5
+#define SIM7X00_RES_RESP_ERR         5
+#define SIM7X00_RES_NOT_SUPPORT_CMD         5
+
+static int _sendwait(const char *send, const char *expect, char **recv, uint32_t timeout)
 {
+    static char recvbuf[100];
 
-}
-
-static int at_send()
-{
-
-}
-
-static int at_recv()
-{
-
+    memset(recvbuf, 0, sizeof(recvbuf));
+    at_send(send);
+    if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, timeout))) {
+        if (*recv = strstr(recvbuf, expect)) {
+            if (p[strlen("+NETOPEN:")] == '1') {
+                return SIM7X00_RES_SOCK_ACTIVE;
+            } else {
+                return SIM7X00_RES_SOCK_DEACTIVE;
+            }
+        } else {
+            return SIM7X00_RES_RESP_ERR;
+        }
+    } else {
+        return SIM7X00_RES_TIMEOUT;
+    }
 }
 
 static int at_ioctl(void *cmd)
 {
 
+    if (!(strcmp((const char *)cmd, "set transparency mode"))) {
+
+    } else if (!(strcmp((const char *)cmd, "set polling mode"))) {
+
+    } else if (!(strcmp((const char *)cmd, "get socket status"))) {
+        at_send("AT+NETOPEN?\n");
+        if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, 100))) {
+            if (p = strstr((const char *)recvbuf, "+NETOPEN:")) {
+                if (p[strlen("+NETOPEN:")] == '1') {
+                    return SIM7X00_RES_SOCK_ACTIVE;
+                } else {
+                    return SIM7X00_RES_SOCK_DEACTIVE;
+                }
+            } else {
+                return SIM7X00_RES_RESP_ERR;
+            }
+        } else {
+            return SIM7X00_RES_TIMEOUT;
+        }
+    } else if (!strcmp((const char *)cmd, "get signal strength")) {
+
+
+    } else if (!strcmp((const char *)cmd, "hard reset")) {
+
+    } else if (!strcmp((const char *)cmd, "soft reset")) {
+
+    } else if (!strcmp((const char *)cmd, "set cmd echo enable")) {
+        at_send("ATE1");
+        if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, 100))) {
+            if (p = strstr((const char *)recvbuf, "+NETOPEN:")) {
+                if (p[strlen("+NETOPEN:")] == '1') {
+                    return SIM7X00_RES_SOCK_ACTIVE;
+                } else {
+                    return SIM7X00_RES_SOCK_DEACTIVE;
+                }
+            } else {
+                return SIM7X00_RES_RESP_ERR;
+            }
+        } else {
+            return SIM7X00_RES_TIMEOUT;
+        }
+    } else if (!strcmp((const char *)cmd, "set cmd echo disable")) {
+        at_send("ATE0");
+            
+    } else if (!strcmp((const char *)cmd, "get dns ip")) {
+            
+    } else if (!strcmp((const char *)cmd, "get local ip")) {
+
+    } else if (!strcmp((const char *)cmd, "get remote ip")) {
+            
+    }
+
+    return SIM7X00_RES_NOT_SUPPORT_CMD;
 }
 
 #endif

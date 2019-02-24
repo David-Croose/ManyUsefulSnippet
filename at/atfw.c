@@ -307,6 +307,10 @@ atfwres_t atfw_ioctl(void *cmd)
         return ATFW_ERR;
     }
 
+    if (os_getrunenv() != 1) {
+        return ATFW_ERR;
+    }
+
     if (!cmd) {
         return ATFW_ERR;
     }
