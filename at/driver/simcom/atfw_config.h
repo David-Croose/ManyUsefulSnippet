@@ -78,86 +78,92 @@ static int at_send(const uint8_t *send, uint32_t sendsz)
 
 }
 
-#define SIM7X00_RES_SOCK_ACTIVE      5
-#define SIM7X00_RES_SOCK_DEACTIVE      5
-#define SIM7X00_RES_TIMEOUT         5
-#define SIM7X00_RES_RESP_ERR         5
-#define SIM7X00_RES_NOT_SUPPORT_CMD         5
+typedef enum {
+    SIM7X00_RES_OK,
+    SIM7X00_RES_SOCK_ACTIVE,
+    SIM7X00_RES_SOCK_DEACTIVE,
+    SIM7X00_RES_TIMEOUT,
+    SIM7X00_RES_RESP_ERR,
+    SIM7X00_RES_NOT_SUPPORT_CMD,
+} sim7x00_res_t;
 
-static int _sendwait(const char *send, const char *expect, char **recv, uint32_t timeout)
+static sim7x00_res_t _sendwait(const char *send, const char *expect, char *recv, uint32_t timeout)
 {
-    static char recvbuf[100];
+    uint8_t recvbuf[100] = {0};
+    char *p;
 
-    memset(recvbuf, 0, sizeof(recvbuf));
-    at_send(send);
+    at_send(send, strlen(send));
     if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, timeout))) {
-        if (*recv = strstr(recvbuf, expect)) {
-            if (p[strlen("+NETOPEN:")] == '1') {
-                return SIM7X00_RES_SOCK_ACTIVE;
+        if (exepect) {
+            if (p = strstr(recvbuf, expect)) {
+                if (recv) {
+                    strcpy(recv, p);
+                    recv[strlen(recv)] = 0;
+                }
             } else {
-                return SIM7X00_RES_SOCK_DEACTIVE;
+                return SIM7X00_RES_RESP_ERR;
             }
         } else {
-            return SIM7X00_RES_RESP_ERR;
+            if (recv) {
+                strcpy(recv, recvbuf);
+                recv[strlen(recv)] = 0;
+            }
         }
     } else {
         return SIM7X00_RES_TIMEOUT;
     }
+
+    return SIM7X00_RES_OK;
 }
 
 static int at_ioctl(void *cmd)
 {
+    char recv[100] = {0};
+    sim7x00_res_t res;
+    char *p;
+    int32_t rssi, ber;
 
     if (!(strcmp((const char *)cmd, "set transparency mode"))) {
 
     } else if (!(strcmp((const char *)cmd, "set polling mode"))) {
 
     } else if (!(strcmp((const char *)cmd, "get socket status"))) {
-        at_send("AT+NETOPEN?\n");
-        if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, 100))) {
-            if (p = strstr((const char *)recvbuf, "+NETOPEN:")) {
+        if ((res = _sendwait("AT+NETOPEN?\n", 0, recv, 100)) == SIM7X00_RES_OK)  {
+            if (p = strstr(recv, "+NETOPEN:")) {
                 if (p[strlen("+NETOPEN:")] == '1') {
                     return SIM7X00_RES_SOCK_ACTIVE;
                 } else {
                     return SIM7X00_RES_SOCK_DEACTIVE;
                 }
-            } else {
-                return SIM7X00_RES_RESP_ERR;
             }
         } else {
-            return SIM7X00_RES_TIMEOUT;
+            return res;
         }
     } else if (!strcmp((const char *)cmd, "get signal strength")) {
-
-
+        if ((res = _sendwait("AT+CSQ\n", "+CSQ: ", recv, 100)) == SIM7X00_RES_OK) {
+            rssi = strtol(&recv[strlen("+CSQ: ")], &p, 10); 
+            ber = strtol(++p, 0, 10); 
+        } else {
+            return res;
+        }
     } else if (!strcmp((const char *)cmd, "hard reset")) {
 
     } else if (!strcmp((const char *)cmd, "soft reset")) {
-
+        return _sendwait("AT+CRESET\n", "OK", 0, 100);
     } else if (!strcmp((const char *)cmd, "set cmd echo enable")) {
-        at_send("ATE1");
-        if (!(os_queue_wait(recvbuf, sizeof(recvbuf), 0, 100))) {
-            if (p = strstr((const char *)recvbuf, "+NETOPEN:")) {
-                if (p[strlen("+NETOPEN:")] == '1') {
-                    return SIM7X00_RES_SOCK_ACTIVE;
-                } else {
-                    return SIM7X00_RES_SOCK_DEACTIVE;
-                }
-            } else {
-                return SIM7X00_RES_RESP_ERR;
-            }
-        } else {
-            return SIM7X00_RES_TIMEOUT;
-        }
+        return _sendwait("ATE1\n", "OK", 0, 100);
     } else if (!strcmp((const char *)cmd, "set cmd echo disable")) {
-        at_send("ATE0");
-            
+        return _sendwait("ATE0\n", "OK", 0, 100);
     } else if (!strcmp((const char *)cmd, "get dns ip")) {
-            
+
     } else if (!strcmp((const char *)cmd, "get local ip")) {
 
     } else if (!strcmp((const char *)cmd, "get remote ip")) {
-            
+
+    } else if (!strcmp((const char *)cmd, "set baud 115200")) {
+
+    } else if (!strcmp((const char *)cmd, "set baud 921600")) {
+
     }
 
     return SIM7X00_RES_NOT_SUPPORT_CMD;
