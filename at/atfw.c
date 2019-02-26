@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdarg.h>
 #include "atfw.h"
 #include "atfw_config.h"
 
@@ -36,7 +37,7 @@ atfwres_t atfw_init(void)
         return ATFW_ERR;
     }
 
-    if (at_init() != 0|| os_queue_init() != 0) {
+    if (os_queue_init() != 0 || at_init() != 0) {
         init_flag = ATFW_ERR;
         dbg_printf("err, the atfw initialization failed!\n");
         goto out;
@@ -298,11 +299,19 @@ err:
 
 /**
  * io-control of hardware-at-device
- * @param cmd: the user command to control hardware-at-device
+ * @param res: the result of this function process
+ * @param fmt: the user command to control hardware-at-device
  * @return: ATFW_OK if everything ok, ATFW_ERR if error happens
  */
-atfwres_t atfw_ioctl(void *cmd)
+atfwres_t atfw_ioctl(void *res, char *fmt, ...)
 {
+    char cmd[100] = {0};
+    va_list args;
+
+    va_start(args, fmt);
+    vsnprintf(cmd, sizeof(cmd), fmt, args);
+    va_end(args);
+
     if (init_flag != ATFW_OK) {
         return ATFW_ERR;
     }
@@ -319,7 +328,7 @@ atfwres_t atfw_ioctl(void *cmd)
         return ATFW_ERR;
     }
 
-    if (at_ioctl(cmd)) {
+    if (at_ioctl(res, (const char *)cmd)) {
         UNLOCK();
         return ATFW_ERR;
     }

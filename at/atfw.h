@@ -21,7 +21,7 @@ atfwres_t atfw_sendwaitbuf(const uint8_t *send, uint32_t sendsz, uint8_t *recv, 
                            uint32_t *respsz, uint32_t timeout);
 atfwres_t atfw_send(const uint8_t *send, uint32_t sendsz);
 atfwres_t atfw_recv(uint8_t *recv, uint32_t recvsz, uint32_t *respsz, uint32_t timeout);
-atfwres_t atfw_ioctl(void *cmd);
+atfwres_t atfw_ioctl(void *res, char *fmt, ...);
 
 #endif
 
