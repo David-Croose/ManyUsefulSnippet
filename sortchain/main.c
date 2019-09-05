@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "sortchain.h"
 
+// right output-------9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 7 7 
 int main(void)
 {
     schres_t res;

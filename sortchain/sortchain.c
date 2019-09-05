@@ -522,6 +522,3 @@ schres_t sortchain_add(schh_t *handle, schdat_t data, schdat_t *mid)
     return SCHRES_OK;
 }
 
-// right output-------9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 7 7
-
-
